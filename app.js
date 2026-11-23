@@ -239,9 +239,20 @@ function load(videoId) {
   player.unMute();
   player.loadVideoById(videoId);
   clearTimeout(autoplayTimer);
-  autoplayTimer = setTimeout(() => {
-    if (round.phase === 'loading') { round.phase = 'blocked'; renderPlay(); }
-  }, AUTOPLAY_TIMEOUT_MS);
+  autoplayTimer = setTimeout(checkAutoplay, AUTOPLAY_TIMEOUT_MS);
+}
+
+// Still not playing after the timeout? While YouTube keeps buffering (slow network,
+// waiting for an ad) look again later. If it fell back to UNSTARTED, the browser
+// refused to autoplay (iOS without a tap in the player): offer "tap to play".
+function checkAutoplay() {
+  if (round.phase !== 'loading') return;
+  if (round.ytState === YT.PlayerState.BUFFERING) {
+    autoplayTimer = setTimeout(checkAutoplay, 1000);
+    return;
+  }
+  round.phase = 'blocked';
+  renderPlay();
 }
 
 function onPlayerState(e) {
@@ -253,10 +264,6 @@ function onPlayerState(e) {
     clearTimeout(autoplayTimer);
     round.phase = 'ready';
     round.playing = true; // wanted; audible is decided by the progress watcher
-  } else if (e.data === S.BUFFERING) {
-    // Autoplay was accepted (it may still wait for an ad): keep the spinner,
-    // don't fall back to "tap to play".
-    clearTimeout(autoplayTimer);
   } else if (e.data === S.PAUSED) {
     round.playing = false;
     resetProgress();
