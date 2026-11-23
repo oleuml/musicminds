@@ -32,6 +32,13 @@
         </form>
       </details>
       <button id="btn-bundles" class="text">Bundles</button>
+      <aside id="brave-tip" class="tip" hidden>
+        <p><strong>Songs without ads:</strong> YouTube may play ads before a song. The Brave browser blocks them automatically. Open MusicMinds in Brave for ad-free rounds.</p>
+        <div class="row">
+          <a class="button primary" href="https://brave.com/download/" target="_blank" rel="noopener">Get Brave</a>
+          <button id="brave-tip-dismiss" class="text">Not now</button>
+        </div>
+      </aside>
     </section>
 
     <!-- Scanner -->
@@ -78,6 +85,18 @@
   </div>
 
   <div id="toast" class="toast" hidden></div>
+
+  <!-- Shown when YouTube won't play the song here. Says nothing about the song itself:
+       the phone is handed to someone sitting out the round. -->
+  <div id="fallback" class="modal" role="dialog" aria-modal="true" aria-labelledby="fallback-title" hidden>
+    <div class="modal-card">
+      <h2 id="fallback-title"></h2>
+      <p class="handover">Hand the phone to someone who sits out this round. The current player must not see or hear the song.</p>
+      <p id="fallback-text" class="muted"></p>
+      <a id="fallback-link" class="button primary big" target="_blank" rel="noopener"></a>
+      <button id="fallback-close" class="text">Back to the game</button>
+    </div>
+  </div>
 
   <div id="update-banner" class="update-banner" hidden>
     <span>New version available</span>

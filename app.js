@@ -204,24 +204,32 @@ window.onYouTubeIframeAPIReady = () => {
         if (pendingVideoId) { load(pendingVideoId); pendingVideoId = null; }
       },
       onStateChange: onPlayerState,
-      onError: (e) => {
-        const reasons = {
-          2: 'invalid video ID',
-          5: 'HTML5 player error',
-          100: 'video not found or private',
-          101: 'owner does not allow embedding',
-          150: 'owner does not allow embedding',
-          152: 'embedding blocked',
-          153: 'player configuration error (missing referrer/origin)',
-        };
-        toast(`YouTube error ${e.data}: ${reasons[e.data] || 'unknown'}`, 8000);
+      onError: async (e) => {
         clearTimeout(autoplayTimer);
-        round.phase = 'ended';
-        renderPlay();
+        if (round.phase === 'idle') return;
+        // The embed answers 150 both for "embedding forbidden" and for deleted videos,
+        // so ask oEmbed whether the video still exists: gone -> search for the song,
+        // otherwise open the video in YouTube itself.
+        const id = round.videoId;
+        const missing = e.data === 2 || e.data === 100 || !(await videoExists(id));
+        if (round.phase === 'idle' || round.videoId !== id) return; // moved on meanwhile
+        showFallback(missing ? 'missing' : 'blocked', `YouTube error ${e.data}`);
       },
     },
   });
 };
+
+// oEmbed: 200 = embeddable, 401/403 = exists but not embeddable/private,
+// 400/404 = no such video. On network trouble assume it exists.
+async function videoExists(id) {
+  try {
+    const url = 'https://www.youtube.com/watch?v=' + id;
+    const res = await fetch('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(url));
+    return !(res.status === 400 || res.status === 404);
+  } catch {
+    return true;
+  }
+}
 
 // Load and start right away; fall back to "tap to play" if autoplay is refused.
 function load(videoId) {
@@ -258,13 +266,55 @@ function pause() { if (playerReady) player.pauseVideo(); }
 // ---------------------------------------------------------------------------
 function startRound(card) {
   const id = videoIdFrom(card.url);
-  if (!id) { toast('Not a YouTube link: ' + card.url); show('home'); return; }
-  Object.assign(round, { phase: 'loading', card, playing: false });
+  if (!id && !(card.artist || card.title)) {
+    toast('Not a YouTube link: ' + card.url); show('home'); return;
+  }
+  Object.assign(round, { phase: 'loading', card, videoId: id, playing: false });
   $('reveal').hidden = true;
+  hideFallback();
   show('play');
   renderPlay();
-  load(id);
+  if (id) load(id);
+  else showFallback('missing', 'No YouTube link for this card');
 }
+
+// ---------------------------------------------------------------------------
+// Fallback when the song can't play in the app
+// ---------------------------------------------------------------------------
+// The dialog never shows the song: whoever sits out the round opens it in YouTube.
+function showFallback(kind, detail) {
+  const c = round.card || {};
+  const query = [c.artist, c.title].filter(Boolean).join(' ');
+  let title, text, label, href;
+  if (kind === 'blocked' && round.videoId) {
+    title = "Can't play this song here";
+    text = "YouTube doesn't allow this video inside the app. Open it on YouTube and play it for the group.";
+    label = 'Open on YouTube';
+    href = 'https://www.youtube.com/watch?v=' + encodeURIComponent(round.videoId);
+  } else if (query) {
+    title = 'Song not found';
+    text = "The video for this card isn't on YouTube anymore. Search for the song on YouTube and play it for the group.";
+    label = 'Search on YouTube';
+    href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
+  } else {
+    title = "Can't play this song here";
+    text = 'Open the link from this card and play it for the group.';
+    label = 'Open link';
+    href = c.url;
+  }
+  $('fallback-title').textContent = title;
+  $('fallback-text').textContent = detail ? `${text} (${detail})` : text;
+  $('fallback-link').textContent = label;
+  $('fallback-link').href = href;
+  $('fallback').hidden = false;
+  round.phase = 'external';
+  round.playing = false;
+  renderPlay();
+}
+function hideFallback() { $('fallback').hidden = true; }
+$('fallback-close').addEventListener('click', hideFallback);
+// Leaving for YouTube: close it, so the game is there when they come back.
+$('fallback-link').addEventListener('click', () => setTimeout(hideFallback, 300));
 
 function renderPlay() {
   if (currentView !== 'play') return;
@@ -278,6 +328,7 @@ function renderPlay() {
     blocked: ['Tap the circle to start', 'Tap to play'],
     ready: playing ? ['Playing', '♪'] : ['Paused', '▶'],
     ended: ['Song finished', '✓'],
+    external: ['Play it on YouTube', '↗'],
   };
   const [hint, label] = states[phase] || ['', ''];
   $('play-hint').textContent = hint;
@@ -308,6 +359,7 @@ $('btn-reveal').addEventListener('click', () => {
 
 $('btn-next').addEventListener('click', () => {
   clearTimeout(autoplayTimer);
+  hideFallback();
   round.phase = 'idle';
   pause();
   startScan();
@@ -516,5 +568,31 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     });
   }).catch(() => {});
 }
+
+// ---------------------------------------------------------------------------
+// Brave recommendation (YouTube ads are blocked there)
+// ---------------------------------------------------------------------------
+const BRAVE_TIP_KEY = 'mm.braveTipDismissed';
+
+// Brave exposes navigator.brave.isBrave(); other browsers don't.
+async function isBrave() {
+  try {
+    return !!(navigator.brave && await navigator.brave.isBrave());
+  } catch {
+    return false;
+  }
+}
+
+(async () => {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(BRAVE_TIP_KEY) === '1'; } catch { /* storage blocked */ }
+  if (dismissed || await isBrave()) return;
+  $('brave-tip').hidden = false;
+})();
+
+$('brave-tip-dismiss').addEventListener('click', () => {
+  $('brave-tip').hidden = true;
+  try { localStorage.setItem(BRAVE_TIP_KEY, '1'); } catch { /* storage blocked */ }
+});
 
 show('home');

@@ -176,3 +176,43 @@ button:disabled { opacity: .4; }
   background: var(--surface-high); color: var(--on-bg);
 }
 .update-banner[hidden] { display: none; }
+
+/* Fallback dialog (song can't be played in the app) */
+.modal {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, .55);
+  overflow-y: auto;
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  width: 100%; max-width: 400px; margin: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 24px 20px; border-radius: 24px; text-align: center;
+  background: var(--bg); color: var(--on-bg);
+}
+.modal-card p { margin: 0; }
+.handover {
+  padding: 12px 14px; border-radius: 14px;
+  background: var(--primary-container); color: var(--on-primary-container);
+  font-weight: 600;
+}
+a.button {
+  display: inline-block; text-decoration: none; border-radius: 999px;
+  background: var(--surface-high); color: var(--on-bg);
+}
+a.button.primary { background: var(--primary); color: var(--on-primary); }
+a.button.big { font-size: 20px; padding: 16px 36px; }
+
+/* Brave recommendation on the home screen */
+.tip {
+  width: 100%;
+  display: grid; gap: 12px; justify-items: center;
+  margin-top: 8px; padding: 16px; border-radius: 20px;
+  background: var(--surface-high); color: var(--on-bg);
+  font-size: 15px;
+}
+.tip[hidden] { display: none; }
+.tip p { margin: 0; }
+.tip a.button { padding: 10px 20px; }
