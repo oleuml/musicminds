@@ -245,7 +245,9 @@ function load(videoId) {
 function onPlayerState(e) {
   const S = YT.PlayerState;
   if (round.phase === 'idle') return;
+  round.ytState = e.data;
   if (e.data === S.PLAYING) {
+    round.playingSince = performance.now();
     clearTimeout(autoplayTimer);
     round.phase = 'ready';
     round.playing = true; // wanted; audible is decided by the progress watcher
@@ -279,19 +281,29 @@ function resetProgress() {
   round.audible = false;
 }
 setInterval(() => {
+  if (currentView !== 'play') return;
   if (!playerReady || round.phase !== 'ready' || !round.playing) {
-    if (round.audible) { resetProgress(); renderPlay(); }
+    if (round.audible) resetProgress();
     progress.lastTime = null;
-    return;
+  } else {
+    const t = player.getCurrentTime() || 0;
+    const moved = progress.lastTime !== null && t > progress.lastTime + 0.05;
+    progress.lastTime = t;
+    if (moved) { progress.stalled = 0; round.audible = true; }
+    else if (++progress.stalled >= STALL_TICKS) round.audible = false;
   }
-  const t = player.getCurrentTime() || 0;
-  const moved = progress.lastTime !== null && t > progress.lastTime + 0.05;
-  progress.lastTime = t;
-  let audible = round.audible;
-  if (moved) { progress.stalled = 0; audible = true; }
-  else if (++progress.stalled >= STALL_TICKS) audible = false;
-  if (audible !== round.audible) { round.audible = audible; renderPlay(); }
+  renderPlay();
 }, PROGRESS_TICK_MS);
+
+// The IFrame API has no ad events. While an ad runs, YouTube reports PLAYING but the
+// song's own position stays put; after AD_AFTER_MS of that we call it an ad.
+const AD_AFTER_MS = 1500;
+// Waiting this long without sound gets an extra hint.
+const LONG_WAIT_MS = 15000;
+function adLikely() {
+  return round.ytState === YT.PlayerState.PLAYING && !round.audible
+    && performance.now() - round.playingSince > AD_AFTER_MS;
+}
 
 // ---------------------------------------------------------------------------
 // Play view
@@ -301,7 +313,9 @@ function startRound(card) {
   if (!id && !(card.artist || card.title)) {
     toast('Not a YouTube link: ' + card.url); show('home'); return;
   }
-  Object.assign(round, { phase: 'loading', card, videoId: id, playing: false });
+  Object.assign(round, {
+    phase: 'loading', card, videoId: id, playing: false, ytState: null, playingSince: 0, waitingSince: 0,
+  });
   resetProgress();
   $('reveal').hidden = true;
   hideFallback();
@@ -354,15 +368,25 @@ function renderPlay() {
   const { phase, playing, audible } = round;
   // Spinner while loading, and while playback is wanted but nothing is heard yet.
   const waiting = phase === 'loading' || (phase === 'ready' && playing && !audible);
+  const now = performance.now();
+  if (waiting && !round.waitingSince) round.waitingSince = now;
+  if (!waiting) round.waitingSince = 0;
+  const ad = waiting && playerReady && adLikely();
+  const longWait = waiting && now - round.waitingSince > LONG_WAIT_MS;
+
   const stage = $('stage');
   stage.classList.toggle('waiting', waiting);
+  stage.classList.toggle('ad', ad);
   stage.classList.toggle('playing', phase === 'ready' && playing && audible);
   stage.classList.toggle('visible', phase !== 'idle');
 
+  let waitText = 'Loading…';
+  if (ad) waitText = 'Ad playing – your song starts right after';
+  else if (longWait) waitText = isIOS() ? 'Still loading… On iPhone and iPad, use Safari.' : 'Still loading…';
   const states = {
-    loading: ['Loading…', ''],
+    loading: [waitText, ''],
     blocked: ['Tap the circle to start', 'Tap to play'],
-    ready: !playing ? ['Paused', '▶'] : audible ? ['Playing', '♪'] : ['Loading…', ''],
+    ready: !playing ? ['Paused', '▶'] : audible ? ['Playing', '♪'] : [waitText, ad ? 'Ad' : ''],
     ended: ['Song finished', '✓'],
     external: ['Play it on YouTube', '↗'],
   };
@@ -610,6 +634,13 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 // ---------------------------------------------------------------------------
 const BRAVE_TIP_KEY = 'mm.braveTipDismissed';
 
+// On iPhone/iPad only Safari plays reliably; Brave's ad blocking can stall the
+// embedded player there, so don't recommend it on iOS.
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+}
+
 // Brave exposes navigator.brave.isBrave(); other browsers don't.
 async function isBrave() {
   try {
@@ -622,7 +653,7 @@ async function isBrave() {
 (async () => {
   let dismissed = false;
   try { dismissed = localStorage.getItem(BRAVE_TIP_KEY) === '1'; } catch { /* storage blocked */ }
-  if (dismissed || await isBrave()) return;
+  if (dismissed || isIOS() || await isBrave()) return;
   $('brave-tip').hidden = false;
 })();
 

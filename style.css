@@ -166,6 +166,12 @@ button:disabled { opacity: .4; }
 }
 .stage.waiting .spinner { display: block; }
 .stage.waiting #shield-label { display: none; }
+.stage.waiting.ad .shield { flex-direction: column; gap: 10px; }
+.stage.waiting.ad #shield-label {
+  display: block; font-size: 22px;
+  padding: 2px 12px; border-radius: 8px;
+  background: var(--on-primary); color: var(--primary);
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { background: var(--primary-container); color: var(--on-primary-container); } }
 
