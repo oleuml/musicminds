@@ -7,15 +7,6 @@ const PLAYLISTS_CSV_URL =
   'https://raw.githubusercontent.com/oleuml/musicminds-hitster-playlists/main/playlists.csv';
 const HITSTER_HOST = 'hitstergame.com';
 
-// Face-down detection. normalZ is the z-component of the screen normal:
-// +1 = screen up, -1 = screen down. Hysteresis avoids flapping at the edge.
-const FACE_DOWN_ENTER = -0.8;
-const FACE_DOWN_LEAVE = -0.6;
-// Linear acceleration (m/s², gravity removed) above which the phone counts as moved.
-const MOTION_THRESHOLD = 2.5;
-// The phone must lie still and face down this long before playback (re)starts.
-const SETTLE_MS = 500;
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -164,58 +155,7 @@ function show(name) {
 const setStatus = (t) => { $('home-status').textContent = t || ''; };
 
 // ---------------------------------------------------------------------------
-// Sensors (orientation + motion)
-// ---------------------------------------------------------------------------
-const sensors = {
-  available: false, // set once a real orientation event arrives
-  faceDown: false,
-  faceDownSince: 0,
-  lastMoveAt: 0,
-};
-
-// Must be called synchronously from a user gesture (iOS permission prompt).
-// Resolves once the prompt is answered, so the camera prompt doesn't collide with it.
-let sensorPermissionAsked = false;
-function requestSensorPermission() {
-  if (sensorPermissionAsked) return Promise.resolve();
-  sensorPermissionAsked = true;
-  const reqs = [];
-  for (const E of [window.DeviceOrientationEvent, window.DeviceMotionEvent]) {
-    if (E && typeof E.requestPermission === 'function') reqs.push(E.requestPermission());
-  }
-  return Promise.all(reqs)
-    .then((r) => { if (r.some((s) => s !== 'granted')) throw new Error(); })
-    .catch(() => toast('No motion access – use “Play without flipping”'));
-}
-
-window.addEventListener('deviceorientation', (e) => {
-  if (e.beta == null || e.gamma == null) return;
-  sensors.available = true;
-  const rad = Math.PI / 180;
-  const normalZ = Math.cos(e.beta * rad) * Math.cos(e.gamma * rad);
-  const now = performance.now();
-  if (!sensors.faceDown && normalZ < FACE_DOWN_ENTER) {
-    sensors.faceDown = true;
-    sensors.faceDownSince = now;
-  } else if (sensors.faceDown && normalZ > FACE_DOWN_LEAVE) {
-    sensors.faceDown = false;
-  }
-});
-
-window.addEventListener('devicemotion', (e) => {
-  let mag;
-  const a = e.acceleration;
-  if (a && a.x != null) {
-    mag = Math.hypot(a.x, a.y, a.z);
-  } else if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x != null) {
-    const g = e.accelerationIncludingGravity;
-    mag = Math.abs(Math.hypot(g.x, g.y, g.z) - 9.81);
-  } else return;
-  if (mag > MOTION_THRESHOLD) sensors.lastMoveAt = performance.now();
-});
-
-// ---------------------------------------------------------------------------
-// Wake lock (keeps the page alive while the phone lies face down)
+// Wake lock (keeps the screen on, so the song isn't cut off by auto-lock)
 // ---------------------------------------------------------------------------
 let wakeLock = null;
 async function requestWakeLock() {
@@ -238,14 +178,18 @@ document.addEventListener('visibilitychange', () => {
 // YouTube player
 // ---------------------------------------------------------------------------
 // Phases of a round:
-//   'arm'   – video cued & muted; the user taps the circle (lands in the iframe),
-//             which counts as user-initiated playback on iOS.
-//   'armed' – playback unlocked; sensors (or the manual button) start/pause it.
-//   'ended' – song finished.
+//   'loading' – video requested with autoplay
+//   'blocked' – the browser refused to autoplay (iOS without a prior tap):
+//               the user taps the circle, which lands in the iframe and starts it
+//   'ready'   – playing or paused
+//   'ended'   – song finished
+// After one tap in the player, iOS lets later rounds autoplay.
+const AUTOPLAY_TIMEOUT_MS = 2500;
 let player = null;
 let playerReady = false;
 let pendingVideoId = null;
-const round = { phase: 'idle', card: null, manual: false, playing: false };
+let autoplayTimer = 0;
+const round = { phase: 'idle', card: null, playing: false };
 
 window.onYouTubeIframeAPIReady = () => {
   player = new YT.Player('yt-player', {
@@ -257,7 +201,7 @@ window.onYouTubeIframeAPIReady = () => {
     events: {
       onReady: () => {
         playerReady = true;
-        if (pendingVideoId) { cue(pendingVideoId); pendingVideoId = null; }
+        if (pendingVideoId) { load(pendingVideoId); pendingVideoId = null; }
       },
       onStateChange: onPlayerState,
       onError: (e) => {
@@ -271,6 +215,7 @@ window.onYouTubeIframeAPIReady = () => {
           153: 'player configuration error (missing referrer/origin)',
         };
         toast(`YouTube error ${e.data}: ${reasons[e.data] || 'unknown'}`, 8000);
+        clearTimeout(autoplayTimer);
         round.phase = 'ended';
         renderPlay();
       },
@@ -278,29 +223,26 @@ window.onYouTubeIframeAPIReady = () => {
   });
 };
 
-function cue(videoId) {
+// Load and start right away; fall back to "tap to play" if autoplay is refused.
+function load(videoId) {
   if (!playerReady) { pendingVideoId = videoId; return; }
-  player.mute();
-  player.cueVideoById(videoId);
+  player.unMute();
+  player.loadVideoById(videoId);
+  clearTimeout(autoplayTimer);
+  autoplayTimer = setTimeout(() => {
+    if (round.phase === 'loading') { round.phase = 'blocked'; renderPlay(); }
+  }, AUTOPLAY_TIMEOUT_MS);
 }
 
 function onPlayerState(e) {
   const S = YT.PlayerState;
+  if (round.phase === 'idle') return;
   if (e.data === S.PLAYING) {
-    if (round.phase === 'arm') {
-      // The user's tap started the (muted) video: stop it, rewind, unmute. From now on
-      // the page may start it programmatically.
-      player.pauseVideo();
-      player.seekTo(0, true);
-      player.unMute();
-      round.phase = 'armed';
-      round.playing = false;
-      renderPlay();
-      return;
-    }
+    clearTimeout(autoplayTimer);
+    round.phase = 'ready';
     round.playing = true;
-  } else if (e.data === S.PAUSED || e.data === S.BUFFERING) {
-    if (e.data === S.PAUSED) round.playing = false;
+  } else if (e.data === S.PAUSED) {
+    round.playing = false;
   } else if (e.data === S.ENDED) {
     round.playing = false;
     round.phase = 'ended';
@@ -311,64 +253,43 @@ function onPlayerState(e) {
 function play() { if (playerReady) { player.unMute(); player.playVideo(); } }
 function pause() { if (playerReady) player.pauseVideo(); }
 
-// Drive playback from the sensors.
-setInterval(() => {
-  if (currentView !== 'play' || round.phase !== 'armed' || round.manual) return;
-  if (!sensors.available) return;
-  const now = performance.now();
-  const shouldPlay = sensors.faceDown
-    && now - sensors.faceDownSince > SETTLE_MS
-    && now - sensors.lastMoveAt > SETTLE_MS;
-  // Act on the intent, not the reported state, so a lift pauses immediately.
-  if (shouldPlay && !round.wantPlay) { round.wantPlay = true; play(); }
-  else if (!shouldPlay && round.wantPlay) { round.wantPlay = false; pause(); }
-}, 100);
-
 // ---------------------------------------------------------------------------
 // Play view
 // ---------------------------------------------------------------------------
 function startRound(card) {
   const id = videoIdFrom(card.url);
   if (!id) { toast('Not a YouTube link: ' + card.url); show('home'); return; }
-  Object.assign(round, { phase: 'arm', card, manual: false, playing: false, wantPlay: false });
+  Object.assign(round, { phase: 'loading', card, playing: false });
   $('reveal').hidden = true;
-  cue(id);
   show('play');
   renderPlay();
+  load(id);
 }
 
 function renderPlay() {
   if (currentView !== 'play') return;
-  const { phase, playing, manual } = round;
+  const { phase, playing } = round;
   const stage = $('stage');
-  const label = $('shield-label');
   stage.classList.toggle('playing', playing);
   stage.classList.toggle('visible', phase !== 'idle');
 
-  let hint;
-  if (phase === 'arm') {
-    hint = 'Tap the circle, then flip the phone face down';
-    label.textContent = 'Tap to arm';
-  } else if (phase === 'armed') {
-    if (manual) hint = playing ? 'Playing' : 'Paused';
-    else if (!sensors.available) hint = 'No motion sensor – use the button below';
-    else hint = playing ? 'Playing – pick it up to pause' : 'Flip the phone face down to play';
-    label.textContent = playing ? '♪' : (manual ? '❚❚' : 'Flip me');
-  } else if (phase === 'ended') {
-    hint = 'Song finished';
-    label.textContent = '✓';
-  }
-  $('play-hint').textContent = hint || '';
+  const states = {
+    loading: ['Loading…', '…'],
+    blocked: ['Tap the circle to start', 'Tap to play'],
+    ready: playing ? ['Playing', '♪'] : ['Paused', '▶'],
+    ended: ['Song finished', '✓'],
+  };
+  const [hint, label] = states[phase] || ['', ''];
+  $('play-hint').textContent = hint;
+  $('shield-label').textContent = label;
 
-  const manualBtn = $('btn-manual-play');
-  manualBtn.hidden = phase !== 'armed';
-  manualBtn.textContent = manual ? (playing ? 'Pause' : 'Play') : 'Play without flipping';
+  const toggle = $('btn-toggle');
+  toggle.hidden = phase !== 'ready';
+  toggle.textContent = playing ? 'Pause' : 'Play';
 }
 
-$('btn-manual-play').addEventListener('click', () => {
-  if (!round.manual) { round.manual = true; round.wantPlay = false; }
+$('btn-toggle').addEventListener('click', () => {
   if (round.playing) pause(); else play();
-  renderPlay();
 });
 
 $('btn-reveal').addEventListener('click', () => {
@@ -386,9 +307,10 @@ $('btn-reveal').addEventListener('click', () => {
 });
 
 $('btn-next').addEventListener('click', () => {
-  pause();
+  clearTimeout(autoplayTimer);
   round.phase = 'idle';
-  requestSensorPermission().then(startScan);
+  pause();
+  startScan();
 });
 
 // Keep the fixed player stage on top of the spacer in the play view.
@@ -435,7 +357,6 @@ $('manual-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const v = $('manual-input').value;
   if (!v.trim()) return;
-  requestSensorPermission();
   handleCode(v);
 });
 
@@ -524,9 +445,7 @@ function stopCamera() {
   $('camera').srcObject = null;
 }
 
-$('btn-scan').addEventListener('click', () => {
-  requestSensorPermission().then(startScan);
-});
+$('btn-scan').addEventListener('click', startScan);
 
 // Surface unexpected errors on screen (no dev tools on the phone).
 window.addEventListener('error', (e) => toast('Error: ' + e.message, 6000));
@@ -569,8 +488,33 @@ $('btn-bundles-back').addEventListener('click', () => show('home'));
 // ---------------------------------------------------------------------------
 // PWA
 // ---------------------------------------------------------------------------
+// A new deploy installs a new service worker that waits; offer to switch to it.
+// Never reload in the middle of a round, so the banner only acts on a tap.
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const offerUpdate = (worker) => {
+    $('update-banner').hidden = false;
+    $('btn-update').onclick = () => worker.postMessage('SKIP_WAITING');
+  };
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      sw?.addEventListener('statechange', () => {
+        // Only an update if a previous version controls the page (not the first install).
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(sw);
+      });
+    });
+    // Installed PWAs stay open for a long time: look for updates when they come back.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
 }
 
 show('home');

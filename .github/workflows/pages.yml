@@ -25,6 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # New cache name per deploy, so installed apps pick up the update.
+      - name: Stamp service worker version
+        run: sed -i "s/__BUILD__/${GITHUB_SHA::8}/" sw.js && grep -n "const VERSION" sw.js
       # upload-pages-artifact leaves out .git and .github
       - uses: actions/upload-pages-artifact@v3
         with:

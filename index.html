@@ -10,14 +10,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="MusicMinds">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon-512.png">
-  <link rel="apple-touch-icon" href="icons/icon-512.png">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main id="app">
     <!-- Home -->
     <section id="view-home" class="view">
+      <img src="icons/icon.svg" alt="" class="logo" width="112" height="112">
       <h1>MusicMinds</h1>
       <button id="btn-scan" class="primary big">Scan card</button>
       <p id="home-status" class="muted"></p>
@@ -60,7 +62,7 @@
         <div id="reveal-artist" class="artist"></div>
       </div>
       <div class="row">
-        <button id="btn-manual-play" class="text">Play without flipping</button>
+        <button id="btn-toggle">Pause</button>
         <button id="btn-reveal">Reveal</button>
       </div>
       <button id="btn-next" class="primary big">Next card</button>
@@ -69,13 +71,18 @@
 
   <!-- The YouTube player lives here permanently (moving an iframe in the DOM reloads it).
        It is always covered by an opaque shield; the shield ignores pointer events so a
-       tap on it lands in the iframe, which iOS requires to allow playback. -->
+       tap on it lands in the iframe, which iOS needs when it refuses to autoplay. -->
   <div id="stage" class="stage">
     <div id="yt-player"></div>
-    <div id="shield" class="shield"><span id="shield-label">Tap to arm</span></div>
+    <div id="shield" class="shield"><span id="shield-label"></span></div>
   </div>
 
   <div id="toast" class="toast" hidden></div>
+
+  <div id="update-banner" class="update-banner" hidden>
+    <span>New version available</span>
+    <button id="btn-update" class="primary">Reload</button>
+  </div>
 
   <script src="vendor/jsQR.js"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
