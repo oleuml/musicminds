@@ -155,6 +155,18 @@ button:disabled { opacity: .4; }
   transition: background .3s;
 }
 .stage.playing .shield { animation: pulse 1.2s ease-in-out infinite; }
+
+/* Loading spinner: shown until the song is audibly running */
+.spinner {
+  display: none;
+  width: 64px; height: 64px; border-radius: 50%;
+  border: 6px solid color-mix(in srgb, var(--on-primary) 25%, transparent);
+  border-top-color: var(--on-primary);
+  animation: spin .9s linear infinite;
+}
+.stage.waiting .spinner { display: block; }
+.stage.waiting #shield-label { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { background: var(--primary-container); color: var(--on-primary-container); } }
 
 .toast {

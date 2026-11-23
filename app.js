@@ -248,18 +248,50 @@ function onPlayerState(e) {
   if (e.data === S.PLAYING) {
     clearTimeout(autoplayTimer);
     round.phase = 'ready';
-    round.playing = true;
+    round.playing = true; // wanted; audible is decided by the progress watcher
+  } else if (e.data === S.BUFFERING) {
+    // Autoplay was accepted (it may still wait for an ad): keep the spinner,
+    // don't fall back to "tap to play".
+    clearTimeout(autoplayTimer);
   } else if (e.data === S.PAUSED) {
     round.playing = false;
+    resetProgress();
   } else if (e.data === S.ENDED) {
     round.playing = false;
     round.phase = 'ended';
+    resetProgress();
   }
   renderPlay();
 }
 
 function play() { if (playerReady) { player.unMute(); player.playVideo(); } }
 function pause() { if (playerReady) player.pauseVideo(); }
+
+// YouTube reports PLAYING before anything is heard (e.g. while an ad, or a blocked
+// ad, is being waited out). The song only counts as audible once its playback
+// position actually moves; a stall of STALL_TICKS ticks shows the spinner again.
+const PROGRESS_TICK_MS = 250;
+const STALL_TICKS = 3;
+const progress = { lastTime: null, stalled: 0 };
+function resetProgress() {
+  progress.lastTime = null;
+  progress.stalled = 0;
+  round.audible = false;
+}
+setInterval(() => {
+  if (!playerReady || round.phase !== 'ready' || !round.playing) {
+    if (round.audible) { resetProgress(); renderPlay(); }
+    progress.lastTime = null;
+    return;
+  }
+  const t = player.getCurrentTime() || 0;
+  const moved = progress.lastTime !== null && t > progress.lastTime + 0.05;
+  progress.lastTime = t;
+  let audible = round.audible;
+  if (moved) { progress.stalled = 0; audible = true; }
+  else if (++progress.stalled >= STALL_TICKS) audible = false;
+  if (audible !== round.audible) { round.audible = audible; renderPlay(); }
+}, PROGRESS_TICK_MS);
 
 // ---------------------------------------------------------------------------
 // Play view
@@ -270,6 +302,7 @@ function startRound(card) {
     toast('Not a YouTube link: ' + card.url); show('home'); return;
   }
   Object.assign(round, { phase: 'loading', card, videoId: id, playing: false });
+  resetProgress();
   $('reveal').hidden = true;
   hideFallback();
   show('play');
@@ -318,15 +351,18 @@ $('fallback-link').addEventListener('click', () => setTimeout(hideFallback, 300)
 
 function renderPlay() {
   if (currentView !== 'play') return;
-  const { phase, playing } = round;
+  const { phase, playing, audible } = round;
+  // Spinner while loading, and while playback is wanted but nothing is heard yet.
+  const waiting = phase === 'loading' || (phase === 'ready' && playing && !audible);
   const stage = $('stage');
-  stage.classList.toggle('playing', playing);
+  stage.classList.toggle('waiting', waiting);
+  stage.classList.toggle('playing', phase === 'ready' && playing && audible);
   stage.classList.toggle('visible', phase !== 'idle');
 
   const states = {
-    loading: ['Loading…', '…'],
+    loading: ['Loading…', ''],
     blocked: ['Tap the circle to start', 'Tap to play'],
-    ready: playing ? ['Playing', '♪'] : ['Paused', '▶'],
+    ready: !playing ? ['Paused', '▶'] : audible ? ['Playing', '♪'] : ['Loading…', ''],
     ended: ['Song finished', '✓'],
     external: ['Play it on YouTube', '↗'],
   };
