@@ -149,6 +149,8 @@ function show(name) {
   currentView = name;
   for (const v of views) $('view-' + v).hidden = v !== name;
   if (name !== 'scan') stopCamera();
+  $('btn-back').hidden = name === 'home';
+  $('btn-reveal').hidden = name !== 'play';
   placeStage();
   if (name === 'play') requestWakeLock(); else releaseWakeLock();
 }
@@ -317,7 +319,7 @@ function startRound(card) {
     phase: 'loading', card, videoId: id, playing: false, ytState: null, playingSince: 0, waitingSince: 0,
   });
   resetProgress();
-  $('reveal').hidden = true;
+  setRevealed(false);
   hideFallback();
   show('play');
   renderPlay();
@@ -403,18 +405,36 @@ $('btn-toggle').addEventListener('click', () => {
   if (round.playing) pause(); else play();
 });
 
-$('btn-reveal').addEventListener('click', () => {
-  const c = round.card || {};
-  let title = c.title, artist = c.artist;
-  if (!title && playerReady) {
-    const d = player.getVideoData();
-    title = d.title; artist = d.author;
+// Reveal toggles: tap again to hide the answer.
+function setRevealed(on) {
+  if (on) {
+    const c = round.card || {};
+    let title = c.title, artist = c.artist;
+    if (!title && playerReady) {
+      const d = player.getVideoData();
+      title = d.title; artist = d.author;
+    }
+    $('reveal-year').textContent = c.year || '';
+    $('reveal-title').textContent = title || 'Unknown';
+    $('reveal-artist').textContent = artist || '';
   }
-  $('reveal-year').textContent = c.year || '';
-  $('reveal-title').textContent = title || 'Unknown';
-  $('reveal-artist').textContent = artist || '';
-  $('reveal').hidden = false;
+  $('reveal').hidden = !on;
+  $('btn-reveal').textContent = on ? 'Hide' : 'Reveal';
+  $('btn-reveal').setAttribute('aria-pressed', String(on));
   placeStage();
+}
+$('btn-reveal').addEventListener('click', () => setRevealed($('reveal').hidden));
+
+// Back (top left): leave the current screen for home; on the play screen this ends the round.
+$('btn-back').addEventListener('click', () => {
+  if (currentView === 'play') {
+    clearTimeout(autoplayTimer);
+    hideFallback();
+    round.phase = 'idle';
+    pause();
+  }
+  setStatus('');
+  show('home');
 });
 
 $('btn-next').addEventListener('click', () => {
@@ -562,7 +582,6 @@ $('btn-scan').addEventListener('click', startScan);
 // Surface unexpected errors on screen (no dev tools on the phone).
 window.addEventListener('error', (e) => toast('Error: ' + e.message, 6000));
 window.addEventListener('unhandledrejection', (e) => toast('Error: ' + (e.reason?.message || e.reason), 6000));
-$('btn-scan-cancel').addEventListener('click', () => show('home'));
 
 // ---------------------------------------------------------------------------
 // Bundles view
@@ -595,7 +614,6 @@ async function renderBundles() {
   }
 }
 $('btn-bundles').addEventListener('click', () => { show('bundles'); renderBundles(); });
-$('btn-bundles-back').addEventListener('click', () => show('home'));
 
 // ---------------------------------------------------------------------------
 // PWA

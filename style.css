@@ -45,7 +45,8 @@ html, body {
 
 #app {
   min-height: 100%;
-  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  /* room for the top bar */
+  padding: calc(max(12px, env(safe-area-inset-top)) + 56px) 16px max(24px, env(safe-area-inset-bottom));
   display: flex;
   justify-content: center;
 }
@@ -234,3 +235,21 @@ a.button.big { font-size: 20px; padding: 16px 36px; }
 .tip[hidden] { display: none; }
 .tip p { margin: 0; }
 .tip a.button { padding: 10px 20px; }
+
+/* Top bar */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: max(12px, env(safe-area-inset-top)) 12px 0;
+  pointer-events: none; /* only the buttons take taps */
+}
+.topbar-btn {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 10px 16px; min-height: 44px;
+  background: var(--surface-high); color: var(--on-bg);
+}
+.topbar-btn[hidden] { display: none; }
+#btn-back { padding-left: 10px; }
+#btn-reveal { margin-left: auto; } /* stays right even when back is hidden */
+#btn-reveal[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); }

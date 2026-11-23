@@ -16,6 +16,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Top bar: back on the left (every screen but home), reveal on the right (play screen) -->
+  <header class="topbar">
+    <button id="btn-back" class="topbar-btn" hidden>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Back</span>
+    </button>
+    <button id="btn-reveal" class="topbar-btn" aria-pressed="false" hidden>Reveal</button>
+  </header>
+
   <main id="app">
     <!-- Home -->
     <section id="view-home" class="view">
@@ -49,14 +58,12 @@
       </div>
       <p class="muted">Point the camera at the QR code</p>
       <p id="scan-debug" class="debug"></p>
-      <button id="btn-scan-cancel" class="text">Cancel</button>
     </section>
 
     <!-- Bundles -->
     <section id="view-bundles" class="view" hidden>
       <h2>Bundles</h2>
       <ul id="bundle-list" class="bundle-list"></ul>
-      <button id="btn-bundles-back" class="text">Back</button>
     </section>
 
     <!-- Play -->
@@ -70,7 +77,6 @@
       </div>
       <div class="row">
         <button id="btn-toggle">Pause</button>
-        <button id="btn-reveal">Reveal</button>
       </div>
       <button id="btn-next" class="primary big">Next card</button>
     </section>
