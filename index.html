@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MusicMinds</title>
+  <meta name="theme-color" content="#0F1511">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MusicMinds">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-512.png">
+  <link rel="apple-touch-icon" href="icons/icon-512.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <!-- Home -->
+    <section id="view-home" class="view">
+      <h1>MusicMinds</h1>
+      <button id="btn-scan" class="primary big">Scan card</button>
+      <p id="home-status" class="muted"></p>
+      <details class="manual">
+        <summary>Enter code or YouTube link</summary>
+        <form id="manual-form">
+          <input id="manual-input" type="text" inputmode="url" autocomplete="off"
+                 placeholder="www.hitstergame.com/de/00001 or YouTube URL">
+          <button type="submit">Go</button>
+        </form>
+      </details>
+      <button id="btn-bundles" class="text">Bundles</button>
+    </section>
+
+    <!-- Scanner -->
+    <section id="view-scan" class="view" hidden>
+      <div class="camera">
+        <video id="camera" playsinline muted></video>
+        <div class="reticle"></div>
+      </div>
+      <p class="muted">Point the camera at the QR code</p>
+      <p id="scan-debug" class="debug"></p>
+      <button id="btn-scan-cancel" class="text">Cancel</button>
+    </section>
+
+    <!-- Bundles -->
+    <section id="view-bundles" class="view" hidden>
+      <h2>Bundles</h2>
+      <ul id="bundle-list" class="bundle-list"></ul>
+      <button id="btn-bundles-back" class="text">Back</button>
+    </section>
+
+    <!-- Play -->
+    <section id="view-play" class="view" hidden>
+      <p id="play-hint" class="hint"></p>
+      <div id="play-spacer" class="stage-spacer"></div>
+      <div id="reveal" class="reveal" hidden>
+        <div id="reveal-year" class="year"></div>
+        <div id="reveal-title" class="title"></div>
+        <div id="reveal-artist" class="artist"></div>
+      </div>
+      <div class="row">
+        <button id="btn-manual-play" class="text">Play without flipping</button>
+        <button id="btn-reveal">Reveal</button>
+      </div>
+      <button id="btn-next" class="primary big">Next card</button>
+    </section>
+  </main>
+
+  <!-- The YouTube player lives here permanently (moving an iframe in the DOM reloads it).
+       It is always covered by an opaque shield; the shield ignores pointer events so a
+       tap on it lands in the iframe, which iOS requires to allow playback. -->
+  <div id="stage" class="stage">
+    <div id="yt-player"></div>
+    <div id="shield" class="shield"><span id="shield-label">Tap to arm</span></div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="vendor/jsQR.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="app.js"></script>
+</body>
+</html>
