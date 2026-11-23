@@ -672,14 +672,13 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 // ---------------------------------------------------------------------------
 // Brave recommendation (YouTube ads are blocked there)
 // ---------------------------------------------------------------------------
-const BRAVE_TIP_KEY = 'mm.braveTipDismissed';
-const AD_SEEN_KEY = 'mm.adSeen';
+// Shown on every app start outside Brave. "Not now" only hides it until the app
+// is opened again; nothing is remembered.
 const braveTip = { isBrave: false, dismissed: false };
 
-function readFlag(key) { try { return localStorage.getItem(key) === '1'; } catch { return false; } }
-function setFlag(key) { try { localStorage.setItem(key, '1'); } catch { /* storage blocked */ } }
+// Earlier versions stored a permanent dismissal; drop it.
+try { localStorage.removeItem('mm.braveTipDismissed'); localStorage.removeItem('mm.adSeen'); } catch { /* storage blocked */ }
 
-// On iPhone/iPad the home screen only suggests Brave once an ad has actually played.
 function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
@@ -695,21 +694,17 @@ async function isBrave() {
 }
 
 function updateHomeBraveTip() {
-  const show = !braveTip.isBrave && !braveTip.dismissed && (!isIOS() || readFlag(AD_SEEN_KEY));
-  $('brave-tip').hidden = !show;
+  $('brave-tip').hidden = braveTip.isBrave || braveTip.dismissed;
 }
 
 // Called while an ad is detected: suggest Brave right there, once per round.
 function offerBraveForAds() {
-  setFlag(AD_SEEN_KEY);
   if (braveTip.isBrave || braveTip.dismissed || !$('ad-tip').hidden) return;
   $('ad-tip').hidden = false;
-  updateHomeBraveTip();
 }
 
 function dismissBraveTips() {
   braveTip.dismissed = true;
-  setFlag(BRAVE_TIP_KEY);
   $('brave-tip').hidden = true;
   $('ad-tip').hidden = true;
 }
@@ -717,7 +712,6 @@ $('brave-tip-dismiss').addEventListener('click', dismissBraveTips);
 $('ad-tip-dismiss').addEventListener('click', dismissBraveTips);
 
 (async () => {
-  braveTip.dismissed = readFlag(BRAVE_TIP_KEY);
   braveTip.isBrave = await isBrave();
   updateHomeBraveTip();
 })();
