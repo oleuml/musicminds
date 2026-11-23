@@ -144,37 +144,59 @@ button:disabled { opacity: .4; }
 }
 .stage.visible { opacity: 1; pointer-events: auto; }
 .stage iframe, .stage #yt-player { width: 100%; height: 100%; }
+/* Shield: an opaque vinyl record over the YouTube iframe. It takes the taps
+   (play/pause) except when the browser refused autoplay: then taps must reach
+   the iframe itself (.passthrough), which iOS needs to allow playback. */
 .shield {
   position: absolute; inset: 0;
-  pointer-events: none; /* taps fall through to the iframe */
-  display: flex; align-items: center; justify-content: center;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-family: "Acme", sans-serif;
-  font-size: 30px;
-  padding: 24px;
-  transition: background .3s;
+  background: #171D19;
+  cursor: pointer;
+  -webkit-user-select: none; user-select: none;
 }
-.stage.playing .shield { animation: pulse 1.2s ease-in-out infinite; }
+.stage.passthrough .shield { pointer-events: none; }
+.shield:focus-visible { outline: 4px solid var(--primary); outline-offset: -4px; border-radius: 50%; }
 
-/* Loading spinner: shown until the song is audibly running */
+.vinyl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.disc {
+  transform-origin: 130px 130px;
+  animation: spin 2.4s linear infinite;
+  animation-play-state: paused; /* stops where it is */
+}
+.stage.playing .disc { animation-play-state: running; }
+.label { fill: var(--primary); }
+.label-ring { stroke: var(--on-primary); stroke-opacity: .25; }
+.label-mark { fill: var(--on-primary); fill-opacity: .35; }
+
+.center {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--on-primary);
+}
+.icon { display: none; width: 52px; height: 52px; fill: currentColor; }
+.stage[data-icon="play"] .icon-play,
+.stage[data-icon="pause"] .icon-pause { display: block; }
+.stage.waiting .icon { display: none; }
+
+/* Loading spinner around the label: shown until the song is audibly running */
 .spinner {
   display: none;
-  width: 64px; height: 64px; border-radius: 50%;
+  width: 104px; height: 104px; border-radius: 50%;
   border: 6px solid color-mix(in srgb, var(--on-primary) 25%, transparent);
   border-top-color: var(--on-primary);
   animation: spin .9s linear infinite;
 }
 .stage.waiting .spinner { display: block; }
-.stage.waiting #shield-label { display: none; }
-.stage.waiting.ad .shield { flex-direction: column; gap: 10px; }
-.stage.waiting.ad #shield-label {
-  display: block; font-size: 22px;
+
+/* Small badge under the label: "Ad", "Tap to play", … */
+#shield-label {
+  position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: "Acme", sans-serif; font-size: 18px;
   padding: 2px 12px; border-radius: 8px;
   background: var(--on-primary); color: var(--primary);
 }
+#shield-label:empty { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes pulse { 50% { background: var(--primary-container); color: var(--on-primary-container); } }
 
 .toast {
   position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom));

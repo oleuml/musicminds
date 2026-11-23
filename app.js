@@ -193,7 +193,10 @@ let pendingVideoId = null;
 let autoplayTimer = 0;
 const round = { phase: 'idle', card: null, playing: false };
 
-window.onYouTubeIframeAPIReady = () => {
+// The YouTube API script may finish loading before or after this file runs, so
+// create the player from its ready callback or right away if it is already there.
+function initPlayer() {
+  if (player) return;
   player = new YT.Player('yt-player', {
     width: 260, height: 260,
     playerVars: {
@@ -219,7 +222,9 @@ window.onYouTubeIframeAPIReady = () => {
       },
     },
   });
-};
+}
+window.onYouTubeIframeAPIReady = initPlayer;
+if (window.YT && window.YT.loaded) initPlayer();
 
 // oEmbed: 200 = embeddable, 401/403 = exists but not embeddable/private,
 // 400/404 = no such video. On network trouble assume it exists.
@@ -327,6 +332,7 @@ function startRound(card) {
   });
   resetProgress();
   setRevealed(false);
+  $('ad-tip').hidden = true;
   hideFallback();
   show('play');
   renderPlay();
@@ -381,6 +387,7 @@ function renderPlay() {
   if (waiting && !round.waitingSince) round.waitingSince = now;
   if (!waiting) round.waitingSince = 0;
   const ad = waiting && playerReady && adLikely();
+  if (ad) offerBraveForAds();
   const longWait = waiting && now - round.waitingSince > LONG_WAIT_MS;
 
   const stage = $('stage');
@@ -388,28 +395,36 @@ function renderPlay() {
   stage.classList.toggle('ad', ad);
   stage.classList.toggle('playing', phase === 'ready' && playing && audible);
   stage.classList.toggle('visible', phase !== 'idle');
+  stage.classList.toggle('passthrough', phase === 'blocked');
 
   let waitText = 'Loading…';
   if (ad) waitText = 'Ad playing – your song starts right after';
   else if (longWait) waitText = isIOS() ? 'Still loading… On iPhone and iPad, use Safari.' : 'Still loading…';
+  // [hint above the record, badge on the record, icon in the middle]
   const states = {
-    loading: [waitText, ''],
-    blocked: ['Tap the circle to start', 'Tap to play'],
-    ready: !playing ? ['Paused', '▶'] : audible ? ['Playing', '♪'] : [waitText, ad ? 'Ad' : ''],
-    ended: ['Song finished', '✓'],
-    external: ['Play it on YouTube', '↗'],
+    loading: [waitText, '', 'none'],
+    blocked: ['Tap the record to start', 'Tap to play', 'play'],
+    ready: !playing ? ['Paused', '', 'play']
+      : audible ? ['Playing', '', 'pause'] : [waitText, ad ? 'Ad' : '', 'none'],
+    ended: ['Song finished', '', 'play'],
+    external: ['Play it on YouTube', 'YouTube', 'none'],
   };
-  const [hint, label] = states[phase] || ['', ''];
+  const [hint, label, icon] = states[phase] || ['', '', 'none'];
   $('play-hint').textContent = hint;
   $('shield-label').textContent = label;
-
-  const toggle = $('btn-toggle');
-  toggle.hidden = phase !== 'ready';
-  toggle.textContent = playing ? 'Pause' : 'Play';
+  stage.dataset.icon = icon;
+  $('shield').setAttribute('aria-label', icon === 'pause' ? 'Pause' : 'Play');
 }
 
-$('btn-toggle').addEventListener('click', () => {
+// The record is the play/pause button.
+function togglePlayback() {
+  if (round.phase === 'ended') { round.phase = 'ready'; play(); return; }
+  if (round.phase !== 'ready') return;
   if (round.playing) pause(); else play();
+}
+$('shield').addEventListener('click', togglePlayback);
+$('shield').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePlayback(); }
 });
 
 // Reveal toggles: tap again to hide the answer.
@@ -658,9 +673,13 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 // Brave recommendation (YouTube ads are blocked there)
 // ---------------------------------------------------------------------------
 const BRAVE_TIP_KEY = 'mm.braveTipDismissed';
+const AD_SEEN_KEY = 'mm.adSeen';
+const braveTip = { isBrave: false, dismissed: false };
 
-// On iPhone/iPad only Safari plays reliably; Brave's ad blocking can stall the
-// embedded player there, so don't recommend it on iOS.
+function readFlag(key) { try { return localStorage.getItem(key) === '1'; } catch { return false; } }
+function setFlag(key) { try { localStorage.setItem(key, '1'); } catch { /* storage blocked */ } }
+
+// On iPhone/iPad the home screen only suggests Brave once an ad has actually played.
 function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
@@ -675,16 +694,32 @@ async function isBrave() {
   }
 }
 
-(async () => {
-  let dismissed = false;
-  try { dismissed = localStorage.getItem(BRAVE_TIP_KEY) === '1'; } catch { /* storage blocked */ }
-  if (dismissed || isIOS() || await isBrave()) return;
-  $('brave-tip').hidden = false;
-})();
+function updateHomeBraveTip() {
+  const show = !braveTip.isBrave && !braveTip.dismissed && (!isIOS() || readFlag(AD_SEEN_KEY));
+  $('brave-tip').hidden = !show;
+}
 
-$('brave-tip-dismiss').addEventListener('click', () => {
+// Called while an ad is detected: suggest Brave right there, once per round.
+function offerBraveForAds() {
+  setFlag(AD_SEEN_KEY);
+  if (braveTip.isBrave || braveTip.dismissed || !$('ad-tip').hidden) return;
+  $('ad-tip').hidden = false;
+  updateHomeBraveTip();
+}
+
+function dismissBraveTips() {
+  braveTip.dismissed = true;
+  setFlag(BRAVE_TIP_KEY);
   $('brave-tip').hidden = true;
-  try { localStorage.setItem(BRAVE_TIP_KEY, '1'); } catch { /* storage blocked */ }
-});
+  $('ad-tip').hidden = true;
+}
+$('brave-tip-dismiss').addEventListener('click', dismissBraveTips);
+$('ad-tip-dismiss').addEventListener('click', dismissBraveTips);
+
+(async () => {
+  braveTip.dismissed = readFlag(BRAVE_TIP_KEY);
+  braveTip.isBrave = await isBrave();
+  updateHomeBraveTip();
+})();
 
 show('home');
